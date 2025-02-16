@@ -15,14 +15,19 @@ This technology reduces body tremor through a mechanism that combines active sti
     <link rel="stylesheet" href="assets/css/baguetteBox.min.css">
     <link rel="stylesheet" href="assets/css/vanilla-zoom.min.css">
     <style>
-        .google-form {
-            width: 100%;
-            max-width: 600px; /* Optional: limit the maximum width */
-            margin: 0 auto; /* Optional: center the form */
+        .responsive-form-wrapper {
+            position: relative;
+            padding-bottom: 75%; /* Adjust this based on your form's aspect ratio (height / width * 100) */
+            height: 0;
+            overflow: hidden;
         }
-        .google-form iframe {
+
+        .responsive-form-wrapper iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
             width: 100%;
-            height: 500px; /* Adjust as needed */
+            height: 100%;
             border: none;
         }
     </style>
