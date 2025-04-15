@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spiral Drawing Test</title>
+    <link rel="stylesheet" href="assets/css/spiraltest.css">
+</head>
+<body>
+    <h1>Spiral Drawing Test</h1>
+    <p>Instructions: Select a mode. Click (or touch) and hold to start drawing the spiral. Release when finished. Click 'Export Data' to download the coordinates.</p>
+
+    <div class="controls">
+        <button id="freehandModeBtn">Mode: Free Hand</button>
+        <button id="followModeBtn">Mode: Follow Template</button>
+        <button id="clearBtn">Clear Drawing</button>
+        <button id="exportBtn">Export Data (CSV)</button>
+    </div>
+
+    <div class="canvas-container">
+        <canvas id="drawingCanvas" width="500" height="500"></canvas>
+        </div>
+
+    <script src="assets/js/spiraltest.js"></script>
+</body>
+</html>
