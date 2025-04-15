@@ -22,7 +22,7 @@ const USER_LINE_COLOR = '#0000FF'; // Blue for user drawing
 const USER_LINE_WIDTH = 2;
 const TEMPLATE_LINE_COLOR = '#AAAAAA'; // Light gray for template
 const TEMPLATE_LINE_WIDTH = 1;
-const TEMPLATE_LOOPS = 5; // Number of spiral loops for the template
+const TEMPLATE_LOOPS = 3; // Number of spiral loops for the template
 const TEMPLATE_POINTS_PER_LOOP = 100; // Adjust for smoothness
 
 // --- Initialization ---
