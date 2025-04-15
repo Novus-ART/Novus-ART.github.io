@@ -12,7 +12,8 @@ let drawingMode = 'freehand'; // 'freehand' or 'follow'
 let lastX = 0;
 let lastY = 0;
 let startTime = 0;
-let recordedData = []; // Array to store [x, y, timestamp_ms]
+let recordedData = []; // Array to store data points
+let templatePoints = []; // Array to store [x, y, angle] for the template spiral
 
 // --- Drawing Configuration ---
 const CANVAS_WIDTH = canvas.width;
@@ -21,6 +22,8 @@ const USER_LINE_COLOR = '#0000FF'; // Blue for user drawing
 const USER_LINE_WIDTH = 2;
 const TEMPLATE_LINE_COLOR = '#AAAAAA'; // Light gray for template
 const TEMPLATE_LINE_WIDTH = 1;
+const TEMPLATE_LOOPS = 5; // Number of spiral loops for the template
+const TEMPLATE_POINTS_PER_LOOP = 100; // Adjust for smoothness
 
 // --- Initialization ---
 function initialize() {
@@ -57,7 +60,7 @@ function setMode(newMode) {
     // Update button styles
     freehandModeBtn.classList.toggle('active', newMode === 'freehand');
     followModeBtn.classList.toggle('active', newMode === 'follow');
-    clearCanvas(); // Clear canvas when switching modes
+    clearCanvas(); // Clear canvas and data when switching modes
 }
 
 // --- Drawing Functions ---
@@ -83,9 +86,11 @@ function startDrawing(event) {
     const coords = getCoordinates(event);
     [lastX, lastY] = [coords.x, coords.y];
     startTime = performance.now(); // High-resolution timestamp
-    recordedData = []; // Clear previous data
 
-    // Record the very first point
+    // Clear previous user data ONLY. Template data persists if mode is 'follow'
+    recordedData = [];
+
+    // Record the very first point (time = 0)
     recordDataPoint(lastX, lastY, 0);
 
     // Setup drawing style for user input
@@ -102,7 +107,7 @@ function draw(event) {
     const currentTime = performance.now();
     const elapsedTime = currentTime - startTime;
 
-    // Record data point
+    // Record data point (template coords will be added later if needed)
     recordDataPoint(coords.x, coords.y, elapsedTime);
 
     // Draw line segment
@@ -111,62 +116,134 @@ function draw(event) {
 
     // Update last coordinates for the *next* segment
     [lastX, lastY] = [coords.x, coords.y];
-     // Keep the path open (don't call ctx.beginPath() here) to draw a continuous line
+    // Keep the path open
 }
 
 function stopDrawing() {
     if (!isDrawing) return;
     isDrawing = false;
-    ctx.closePath(); // Close the user's drawing path
+    // Don't close the user path here if we want to potentially add more later?
+    // It's probably fine to leave it open or close it. Let's close it.
+    // If you uncomment stroke/close below, it might draw a final line segment back
+    // to the start if the path wasn't properly managed - be careful.
+    // ctx.stroke(); // Ensure last segment is drawn (draw() already does this)
+    // ctx.closePath();
+
     console.log(`Drawing stopped. Recorded ${recordedData.length} points.`);
+
+    // If in follow mode, process the data to add template coordinates
+    if (drawingMode === 'follow' && recordedData.length > 0) {
+        processDataWithTemplate();
+    }
 }
 
 // --- Data Recording ---
 function recordDataPoint(x, y, time) {
-    // Ensure coordinates are within canvas bounds (optional, but good practice)
-    const clampedX = Math.max(0, Math.min(CANVAS_WIDTH, x));
-    const clampedY = Math.max(0, Math.min(CANVAS_HEIGHT, y));
-    recordedData.push([clampedX.toFixed(2), clampedY.toFixed(2), time.toFixed(2)]);
+    // Initially record only user data
+    const clampedX = Math.max(0, Math.min(CANVAS_WIDTH, x)).toFixed(2);
+    const clampedY = Math.max(0, Math.min(CANVAS_HEIGHT, y)).toFixed(2);
+    recordedData.push([clampedX, clampedY, time.toFixed(2)]);
 }
+
+// --- Post-Processing for Follow Mode ---
+function processDataWithTemplate() {
+    if (!templatePoints || templatePoints.length === 0 || recordedData.length === 0) {
+        console.warn("Cannot process data with template: Missing template or user data.");
+        return;
+    }
+
+    const totalUserTime = parseFloat(recordedData[recordedData.length - 1][2]); // Get time of last point
+    const totalTemplateAngle = TEMPLATE_LOOPS * 2 * Math.PI;
+
+    if (totalUserTime <= 0) {
+        console.warn("Total drawing time is zero, cannot map to template.");
+        // Assign the first template point to all user points? Or leave empty? Let's leave empty.
+        // Alternative: assign templatePoints[0] coordinates to all.
+         recordedData.forEach(point => {
+             point.push(templatePoints[0][0].toFixed(2)); // template X
+             point.push(templatePoints[0][1].toFixed(2)); // template Y
+         });
+        return;
+    }
+
+    // Find the template point corresponding to the user's time progression
+    recordedData.forEach(point => {
+        const userTime = parseFloat(point[2]);
+        // Calculate the expected angle progress based on time fraction
+        const expectedAngle = (userTime / totalUserTime) * totalTemplateAngle;
+
+        // Find the closest template point by angle
+        let closestPoint = templatePoints[0];
+        let minAngleDiff = Math.abs(expectedAngle - closestPoint[2]); // templatePoints stores [x, y, angle]
+
+        for (let i = 1; i < templatePoints.length; i++) {
+            const currentDiff = Math.abs(expectedAngle - templatePoints[i][2]);
+            if (currentDiff < minAngleDiff) {
+                minAngleDiff = currentDiff;
+                closestPoint = templatePoints[i];
+            }
+        }
+
+        // Add the template coordinates to the user data point
+        point.push(closestPoint[0].toFixed(2)); // template X
+        point.push(closestPoint[1].toFixed(2)); // template Y
+        // point now looks like [userX, userY, time, templateX, templateY]
+    });
+
+    console.log("Processed user data with corresponding template points.");
+}
+
 
 // --- Canvas Operations ---
 function clearCanvas() {
     ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    recordedData = []; // Clear data when clearing canvas
-    isDrawing = false; // Ensure drawing stops if cleared mid-draw
+    recordedData = []; // Clear user data
+    // We don't clear templatePoints here, drawTemplateSpiral handles regenerating it
+    isDrawing = false; // Ensure drawing stops
 
     if (drawingMode === 'follow') {
-        drawTemplateSpiral();
+        drawTemplateSpiral(); // Redraws and refills templatePoints
+    } else {
+         templatePoints = []; // Explicitly clear if not in follow mode
     }
     console.log("Canvas cleared.");
 }
 
 function drawTemplateSpiral() {
+    templatePoints = []; // Clear previous template points before redrawing
     const centerX = CANVAS_WIDTH / 2;
     const centerY = CANVAS_HEIGHT / 2;
     const maxRadius = Math.min(centerX, centerY) - 10; // Leave some margin
-    const loops = 5; // Number of spiral loops
     const a = 0; // Starting radius (center)
-    const b = maxRadius / (loops * 2 * Math.PI); // Controls tightness
+    const b = maxRadius / (TEMPLATE_LOOPS * 2 * Math.PI); // Controls tightness
 
     ctx.strokeStyle = TEMPLATE_LINE_COLOR;
     ctx.lineWidth = TEMPLATE_LINE_WIDTH;
     ctx.beginPath();
-    ctx.moveTo(centerX, centerY); // Start at the center
+    // Don't moveTo center if a=0, start calculation from first point
+    // ctx.moveTo(centerX, centerY);
 
-    const pointsPerLoop = 100; // Adjust for smoothness
-    const totalPoints = loops * pointsPerLoop;
+    const totalPoints = TEMPLATE_LOOPS * TEMPLATE_POINTS_PER_LOOP;
 
     for (let i = 0; i <= totalPoints; i++) {
-        const angle = (i / pointsPerLoop) * 2 * Math.PI;
+        const angle = (i / TEMPLATE_POINTS_PER_LOOP) * 2 * Math.PI;
         const radius = a + b * angle;
         const x = centerX + radius * Math.cos(angle);
         const y = centerY + radius * Math.sin(angle);
-        ctx.lineTo(x, y);
+
+        // Store the point
+        templatePoints.push([x, y, angle]);
+
+        // Draw the line segment
+        if (i === 0) {
+            ctx.moveTo(x, y);
+        } else {
+            ctx.lineTo(x, y);
+        }
     }
     ctx.stroke();
-    ctx.closePath(); // Close the template path
-    console.log("Template spiral drawn.");
+    // ctx.closePath(); // Don't close path for an open spiral
+    console.log(`Template spiral drawn. Stored ${templatePoints.length} points.`);
 }
 
 // --- Data Export ---
@@ -176,10 +253,26 @@ function exportData() {
         return;
     }
 
-    // Create CSV header and rows
-    const header = "X,Y,Time(ms)\n";
+    let header = "";
+    let csvContent = "";
+
+    // Check if data includes template coordinates (5 columns)
+    // This relies on processDataWithTemplate having run successfully in 'follow' mode
+    const hasTemplateData = recordedData[0].length === 5;
+
+    if (drawingMode === 'follow' && hasTemplateData) {
+        header = "User_X,User_Y,Time(ms),Template_X,Template_Y\n";
+    } else if (drawingMode === 'follow' && !hasTemplateData) {
+         console.warn("Exporting in Follow mode, but template data wasn't added. Exporting User data only.");
+         header = "User_X,User_Y,Time(ms),Template_X(Error),Template_Y(Error)\n"; // Indicate error
+    }
+     else { // freehand mode
+        header = "X,Y,Time(ms)\n";
+    }
+
+    // Create CSV rows
     const csvRows = recordedData.map(row => row.join(',')).join('\n');
-    const csvContent = header + csvRows;
+    csvContent = header + csvRows;
 
     // Create a Blob and download link
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -187,17 +280,15 @@ function exportData() {
     const url = URL.createObjectURL(blob);
 
     link.setAttribute('href', url);
-    // Create a somewhat unique filename
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const filename = `spiral_data_${drawingMode}_${timestamp}.csv`;
     link.setAttribute('download', filename);
     link.style.visibility = 'hidden';
 
-    // Append, click, and remove the link
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    URL.revokeObjectURL(url); // Clean up the blob URL
+    URL.revokeObjectURL(url); // Clean up
     console.log(`Data exported as ${filename}`);
 }
 
