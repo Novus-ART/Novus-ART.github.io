@@ -1,0 +1,108 @@
+/* General Body and Text Styles */
+body {
+    font-family: sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center; /* Center content horizontally */
+    padding: 20px;
+    background-color: #f4f4f4;
+    min-height: 100vh; /* Ensure background covers viewport */
+    box-sizing: border-box;
+}
+
+h1 {
+    margin-bottom: 5px; /* Reduced margin */
+    text-align: center;
+    color:#0031ED;
+    font-family:poppins;
+}
+
+p {
+    max-width: 600px;
+    text-align: center;
+    color: #555;
+    margin-bottom: 20px;
+    line-height: 1.5;
+}
+
+/* Controls Section (Buttons) */
+.controls {
+    margin-bottom: 20px;
+    display: flex;
+    flex-wrap: wrap; /* Allow buttons to wrap on smaller screens */
+    gap: 10px; /* Spacing between buttons */
+    justify-content: center; /* Center buttons */
+    max-width: 800px; /* Limit width of controls area */
+}
+
+.controls button {
+    padding: 10px 15px;
+    font-size: 1em;
+    cursor: pointer;
+    border: 1px solid #ccc;
+    background-color: #fff;
+    border-radius: 4px;
+    transition: background-color 0.2s, border-color 0.2s;
+}
+
+.controls button:hover {
+    background-color: #eee;
+    border-color: #bbb;
+}
+
+.controls button.active {
+    background-color: #0031ED; /* Highlight active mode */
+    border-color: #a0c0ff;
+    font-weight: bold;
+    color:#fff;
+}
+
+/* Drawing Canvas Area */
+.canvas-container {
+    border: 1px solid #ccc;
+    background-color: #fff; /* White canvas background */
+    box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
+    /* Prevent page scroll/zoom on touch devices when drawing inside */
+    touch-action: none;
+    margin-bottom: 20px; /* Space below canvas */
+}
+
+#drawingCanvas {
+    display: block; /* Remove extra space below canvas element */
+    /* Width and height are set in HTML */
+}
+
+/* Plotting Area */
+.plots-container {
+    display: flex; /* Arrange plots side-by-side */
+    flex-wrap: wrap; /* Allow wrapping on smaller screens */
+    justify-content: center; /* Center plots if they wrap or if only one */
+    gap: 20px; /* Space between plots */
+    margin-top: 20px; /* Space above the plots area */
+    width: 95%; /* Control overall width */
+    max-width: 1100px; /* Max width for larger screens */
+}
+
+.plot-wrapper {
+    flex: 1 1 400px; /* Allow plots to grow/shrink, base width 400px */
+    max-width: 500px; /* Max width per plot */
+    border: 1px solid #ddd;
+    background-color: #fff;
+    padding: 15px; /* Increased padding */
+    box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
+    /* Set a height or aspect ratio for the canvas container */
+    height: 350px; /* Adjusted height */
+    position: relative; /* Needed for Chart.js responsiveness */
+    box-sizing: border-box;
+}
+
+/* Ensure Chart.js canvas fills its wrapper */
+#xPlotCanvas, #yPlotCanvas {
+   width: 100% !important; /* Override any inline styles Chart.js might add */
+   height: 100% !important;
+}
+
+/* Utility class to hide elements */
+.hidden {
+    display: none !important; /* Use !important to ensure it overrides other display styles */
+}

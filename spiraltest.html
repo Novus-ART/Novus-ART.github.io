@@ -4,23 +4,34 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Spiral Drawing Test</title>
-    <link rel="stylesheet" href="assets/css/spiraltest.css">
+    <link rel="stylesheet" href="spiral/spiraltest.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <h1>Spiral Drawing Test</h1>
-    <p>Instructions: Select a mode. Click (or touch) and hold to start drawing the spiral. Release when finished. Click 'Export Data' to download the coordinates.</p>
+    <p>Instructions: Select a mode. The 'Follow Template' mode uses a fixed 3-loop spiral. Click (or touch) and hold to start drawing. Release when finished. Click 'Generate Plots' to visualize the data or 'Export Data' to download.</p>
 
     <div class="controls">
         <button id="freehandModeBtn">Mode: Free Hand</button>
         <button id="followModeBtn">Mode: Follow Template</button>
         <button id="clearBtn">Clear Drawing</button>
+        <button id="generatePlotsBtn">Generate Plots</button>
         <button id="exportBtn">Export Data (CSV)</button>
-    </div>
+
+        </div>
 
     <div class="canvas-container">
         <canvas id="drawingCanvas" width="500" height="500"></canvas>
-        </div>
+    </div>
 
-    <script src="assets/js/spiraltest.js"></script>
+    <div class="plots-container hidden" id="plotsContainer"> <div class="plot-wrapper">
+            <canvas id="xPlotCanvas"></canvas>
+        </div>
+        <div class="plot-wrapper">
+            <canvas id="yPlotCanvas"></canvas>
+        </div>
+    </div>
+
+    <script src="spiral/spiraltest.js"></script>
 </body>
 </html>
