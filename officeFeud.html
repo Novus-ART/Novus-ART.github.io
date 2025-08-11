@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Office Duels</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Press Start 2P', cursive;
+            background-color: #1a202c;
+            color: #a0aec0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            min-height: 100vh;
+            margin: 0;
+        }
+        canvas {
+            background: #2d3748;
+            border-radius: 0.5rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        .controls-container {
+            display: flex;
+            justify-content: space-around;
+            width: 100%;
+            max-width: 1024px;
+            margin-top: 1rem;
+            padding: 1rem;
+            background-color: #2d3748;
+            border-radius: 0.5rem;
+        }
+        .control-group {
+            text-align: center;
+        }
+        .key {
+            display: inline-block;
+            padding: 0.5rem 0.75rem;
+            margin: 0.25rem;
+            background-color: #4a5568;
+            color: #e2e8f0;
+            border-radius: 0.25rem;
+            border: 1px solid #718096;
+            min-width: 40px;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-300 flex flex-col items-center justify-center min-h-screen p-4">
+
+    <h1 class="text-4xl mb-4 text-white">Office Duels</h1>
+    <p class="mb-4">Settle your disputes the old-fashioned way!</p>
+
+    <!-- Game UI Container -->
+    <div class="relative w-full max-w-5xl">
+        <!-- Player 1 Health -->
+        <div class="absolute top-4 left-4 w-2/5 h-8 bg-gray-700 rounded-lg border-2 border-gray-500">
+            <div id="player1Health" class="bg-red-500 h-full rounded-md transition-all duration-500 ease-in-out"></div>
+            <span class="absolute inset-0 flex items-center justify-center text-white font-bold">Player 1</span>
+        </div>
+
+        <!-- Timer -->
+        <div id="timer" class="absolute top-4 left-1/2 -translate-x-1/2 w-24 h-12 bg-gray-800 text-white text-4xl flex items-center justify-center rounded-lg border-2 border-gray-500">
+            60
+        </div>
+        
+        <!-- Player 2 Health -->
+        <div class="absolute top-4 right-4 w-2/5 h-8 bg-gray-700 rounded-lg border-2 border-gray-500">
+            <div id="player2Health" class="bg-blue-500 h-full rounded-md transition-all duration-500 ease-in-out"></div>
+            <span class="absolute inset-0 flex items-center justify-center text-white font-bold">Player 2</span>
+        </div>
+
+        <!-- Game Over Message -->
+        <div id="gameMessage" class="absolute inset-0 flex items-center justify-center text-6xl text-white font-bold hidden bg-black bg-opacity-50">
+            Tie
+        </div>
+
+        <canvas id="gameCanvas" width="1024" height="576"></canvas>
+    </div>
+
+    <!-- Controls Display -->
+    <div class="controls-container">
+        <div class="control-group">
+            <h3 class="text-lg mb-2">Player 1</h3>
+            <p><span class="key">W</span> <span class="key">A</span> <span class="key">S</span> <span class="key">D</span> - Move/Jump</p>
+            <p><span class="key">Z</span> - Punch | <span class="key">X</span> - Kick | <span class="key">C</span> - Block</p>
+        </div>
+        <div class="control-group">
+            <h3 class="text-lg mb-2">Player 2</h3>
+            <p><span class="key">↑</span> <span class="key">←</span> <span class="key">↓</span> <span class="key">→</span> - Move/Jump</p>
+            <p><span class="key">J</span> - Punch | <span class="key">K</span> - Kick | <span class="key">L</span> - Block</p>
+        </div>
+    </div>
+    
+    <button id="restartButton" class="mt-4 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 hidden">Play Again</button>
+
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const c = canvas.getContext('2d');
+
+        // --- Game Setup ---
+        const gravity = 0.7;
+        const groundHeight = 96;
+
+        class Sprite {
+            constructor({ position, velocity, color = 'red', offset, dimensions }) {
+                this.position = position;
+                this.velocity = velocity;
+                this.width = dimensions.width;
+                this.height = dimensions.height;
+                this.color = color;
+                this.isAttacking = false;
+                this.attackBox = {
+                    position: {
+                        x: this.position.x,
+                        y: this.position.y
+                    },
+                    offset,
+                    width: 100,
+                    height: 50
+                };
+                this.health = 100;
+                this.isBlocking = false;
+                this.lastkey = '';
+            }
+
+            draw() {
+                // Player body
+                c.fillStyle = this.color;
+                c.fillRect(this.position.x, this.position.y, this.width, this.height);
+
+                // Attack box (for debugging, can be hidden)
+                if (this.isAttacking) {
+                    c.fillStyle = 'rgba(255, 255, 255, 0.2)';
+                    c.fillRect(
+                        this.attackBox.position.x,
+                        this.attackBox.position.y,
+                        this.attackBox.width,
+                        this.attackBox.height
+                    );
+                }
+            }
+
+            update() {
+                this.draw();
+                
+                // Update attack box position to follow the player
+                this.attackBox.position.x = this.position.x + this.attackBox.offset.x;
+                this.attackBox.position.y = this.position.y + this.attackBox.offset.y;
+
+                // Movement and Gravity
+                this.position.x += this.velocity.x;
+                this.position.y += this.velocity.y;
+
+                // Gravity effect
+                if (this.position.y + this.height + this.velocity.y >= canvas.height - groundHeight) {
+                    this.velocity.y = 0;
+                    this.position.y = canvas.height - this.height - groundHeight; // Snap to ground
+                } else {
+                    this.velocity.y += gravity;
+                }
+                
+                // Prevent players from going off-screen
+                if (this.position.x < 0) this.position.x = 0;
+                if (this.position.x + this.width > canvas.width) this.position.x = canvas.width - this.width;
+            }
+
+            attack(type) {
+                if (this.isBlocking) return; // Can't attack while blocking
+                this.isAttacking = true;
+                // Adjust hitbox based on attack type
+                this.attackBox.width = (type === 'punch') ? 100 : 150;
+                this.attackBox.height = (type === 'punch') ? 50 : 60;
+                setTimeout(() => {
+                    this.isAttacking = false;
+                }, 200); // Attack duration
+            }
+            
+            block() {
+                this.isBlocking = true;
+                setTimeout(() => {
+                    this.isBlocking = false;
+                }, 500); // Block duration
+            }
+        }
+
+        // --- Player and Enemy Initialization ---
+        let player1;
+        let player2;
+        let timer = 60;
+        let timerId;
+        let gameEnded = false;
+
+        const restartButton = document.getElementById('restartButton');
+        
+        function initializeGame() {
+            gameEnded = false;
+            document.getElementById('gameMessage').classList.add('hidden');
+            restartButton.classList.add('hidden');
+
+            player1 = new Sprite({
+                position: { x: 100, y: 0 },
+                velocity: { x: 0, y: 0 },
+                color: '#ef4444', // Red-500
+                dimensions: { width: 50, height: 150 },
+                offset: { x: 0, y: 50 }
+            });
+
+            player2 = new Sprite({
+                position: { x: canvas.width - 150, y: 100 },
+                velocity: { x: 0, y: 0 },
+                color: '#3b82f6', // Blue-500
+                dimensions: { width: 50, height: 150 },
+                offset: { x: -100, y: 50 }
+            });
+
+            // Reset health bars
+            document.getElementById('player1Health').style.width = '100%';
+            document.getElementById('player2Health').style.width = '100%';
+            
+            decreaseTimer();
+            animate();
+        }
+
+
+        const keys = {
+            // Player 1
+            a: { pressed: false },
+            d: { pressed: false },
+            w: { pressed: false },
+            z: { pressed: false },
+            x: { pressed: false },
+            c: { pressed: false },
+            // Player 2
+            ArrowRight: { pressed: false },
+            ArrowLeft: { pressed: false },
+            ArrowUp: { pressed: false },
+            j: { pressed: false },
+            k: { pressed: false },
+            l: { pressed: false }
+        };
+
+        // --- Collision Detection ---
+        function rectangularCollision({ rectangle1, rectangle2 }) {
+            return (
+                rectangle1.attackBox.position.x + rectangle1.attackBox.width >= rectangle2.position.x &&
+                rectangle1.attackBox.position.x <= rectangle2.position.x + rectangle2.width &&
+                rectangle1.attackBox.position.y + rectangle1.attackBox.height >= rectangle2.position.y &&
+                rectangle1.attackBox.position.y <= rectangle2.position.y + rectangle2.height
+            );
+        }
+
+        // --- Determine Winner ---
+        function determineWinner({ player1, player2, timerId }) {
+            clearTimeout(timerId);
+            gameEnded = true;
+            const gameMessage = document.getElementById('gameMessage');
+            gameMessage.classList.remove('hidden');
+            restartButton.classList.remove('hidden');
+
+            if (player1.health === player2.health) {
+                gameMessage.innerHTML = 'Tie';
+            } else if (player1.health > player2.health) {
+                gameMessage.innerHTML = 'Player 1 Wins!';
+            } else {
+                gameMessage.innerHTML = 'Player 2 Wins!';
+            }
+        }
+
+        // --- Timer ---
+        function decreaseTimer() {
+            if (timer > 0) {
+                timerId = setTimeout(decreaseTimer, 1000);
+                timer--;
+                document.getElementById('timer').innerHTML = timer;
+            }
+            if (timer === 0) {
+                determineWinner({ player1, player2, timerId });
+            }
+        }
+
+        // --- Animation Loop ---
+        function animate() {
+            if (gameEnded) return;
+
+            window.requestAnimationFrame(animate);
+            c.fillStyle = '#2d3748';
+            c.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw ground
+            c.fillStyle = '#4a5568';
+            c.fillRect(0, canvas.height - groundHeight, canvas.width, groundHeight);
+
+            player1.update();
+            player2.update();
+
+            // Player 1 movement
+            player1.velocity.x = 0;
+            if (keys.a.pressed && player1.lastkey === 'a') {
+                player1.velocity.x = -5;
+            } else if (keys.d.pressed && player1.lastkey === 'd') {
+                player1.velocity.x = 5;
+            }
+
+            // Player 2 movement
+            player2.velocity.x = 0;
+            if (keys.ArrowLeft.pressed && player2.lastkey === 'ArrowLeft') {
+                player2.velocity.x = -5;
+            } else if (keys.ArrowRight.pressed && player2.lastkey === 'ArrowRight') {
+                player2.velocity.x = 5;
+            }
+
+            // --- Attack Collision Logic ---
+            // Player 1 attacks Player 2
+            if (rectangularCollision({ rectangle1: player1, rectangle2: player2 }) && player1.isAttacking) {
+                player1.isAttacking = false; // Prevent multiple hits from one attack
+                if (!player2.isBlocking) {
+                    player2.health -= player1.attackBox.width === 100 ? 10 : 15; // Punch vs Kick damage
+                    document.getElementById('player2Health').style.width = player2.health + '%';
+                }
+            }
+
+            // Player 2 attacks Player 1
+            if (rectangularCollision({ rectangle1: player2, rectangle2: player1 }) && player2.isAttacking) {
+                player2.isAttacking = false;
+                if (!player1.isBlocking) {
+                    player1.health -= player2.attackBox.width === 100 ? 10 : 15;
+                    document.getElementById('player1Health').style.width = player1.health + '%';
+                }
+            }
+
+            // --- End Game on Health Depletion ---
+            if (player1.health <= 0 || player2.health <= 0) {
+                determineWinner({ player1, player2, timerId });
+            }
+        }
+
+        // --- Event Listeners ---
+        window.addEventListener('keydown', (event) => {
+            if (gameEnded) return;
+            switch (event.key) {
+                // Player 1
+                case 'd': keys.d.pressed = true; player1.lastkey = 'd'; break;
+                case 'a': keys.a.pressed = true; player1.lastkey = 'a'; break;
+                case 'w': if (player1.position.y + player1.height >= canvas.height - groundHeight) player1.velocity.y = -20; break;
+                case 'z': player1.attack('punch'); break;
+                case 'x': player1.attack('kick'); break;
+                case 'c': player1.block(); break;
+
+                // Player 2
+                case 'ArrowRight': keys.ArrowRight.pressed = true; player2.lastkey = 'ArrowRight'; break;
+                case 'ArrowLeft': keys.ArrowLeft.pressed = true; player2.lastkey = 'ArrowLeft'; break;
+                case 'ArrowUp': if (player2.position.y + player2.height >= canvas.height - groundHeight) player2.velocity.y = -20; break;
+                case 'j': player2.attack('punch'); break;
+                case 'k': player2.attack('kick'); break;
+                case 'l': player2.block(); break;
+            }
+        });
+
+        window.addEventListener('keyup', (event) => {
+            switch (event.key) {
+                // Player 1
+                case 'd': keys.d.pressed = false; break;
+                case 'a': keys.a.pressed = false; break;
+                // Player 2
+                case 'ArrowRight': keys.ArrowRight.pressed = false; break;
+                case 'ArrowLeft': keys.ArrowLeft.pressed = false; break;
+            }
+        });
+
+        restartButton.addEventListener('click', () => {
+            clearTimeout(timerId);
+            timer = 60;
+            document.getElementById('timer').innerHTML = timer;
+            initializeGame();
+        });
+
+        // Initial game start
+        initializeGame();
+    </script>
+</body>
+</html>
