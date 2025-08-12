@@ -256,6 +256,7 @@
                 players: { [userId]: 1 },
                 status: 'waiting',
                 timer: 60,
+                lastTimerUpdate: Date.now(), // Add timestamp for timer
                 player1: {
                     x: 100, y: 0, vx: 0, vy: 0, health: 100, action: 'idle'
                 },
@@ -353,16 +354,23 @@
         
         let lastHostUpdateTime = 0;
         function hostUpdateLoop() {
-             if (localPlayerNumber !== 1 || gameEnded || !gameData || gameData.status !== 'active') return;
+             if (localPlayerNumber !== 1 || gameEnded || !gameData || !gameData.player1 || gameData.status !== 'active') return;
              
              const now = Date.now();
-             if (now - lastHostUpdateTime < 50) return;
+             if (now - lastHostUpdateTime < 50) return; // Run at ~20Hz
              lastHostUpdateTime = now;
 
-             let newTimer = gameData.timer - 1;
-             let newStatus = gameData.status;
-             let winner = null;
+             const updatePayload = {};
+             let newTimer = gameData.timer;
 
+             // --- Timer Logic (runs once per second) ---
+             if (now - gameData.lastTimerUpdate >= 1000) {
+                 newTimer = gameData.timer - 1;
+                 updatePayload.timer = newTimer;
+                 updatePayload.lastTimerUpdate = now;
+             }
+
+             // --- Collision & Damage Logic ---
              const p1AttackBox = { x: gameData.player1.x, y: gameData.player1.y + 50, width: 100, height: 50 };
              const p2AttackBox = { x: gameData.player2.x, y: gameData.player2.y + 50, width: 100, height: 50 };
              const p1Body = { x: gameData.player1.x, y: gameData.player1.y, width: 50, height: 150 };
@@ -370,27 +378,38 @@
              
              let newP1Health = gameData.player1.health;
              let newP2Health = gameData.player2.health;
+             let healthChanged = false;
 
-             if (gameData.player1.action === 'punch' && checkCollision(p1AttackBox, p2Body) && gameData.player2.action !== 'block') newP2Health -= 10;
-             if (gameData.player1.action === 'kick' && checkCollision({...p1AttackBox, width: 150}, p2Body) && gameData.player2.action !== 'block') newP2Health -= 15;
-             if (gameData.player2.action === 'punch' && checkCollision(p2AttackBox, p1Body) && gameData.player1.action !== 'block') newP1Health -= 10;
-             if (gameData.player2.action === 'kick' && checkCollision({...p2AttackBox, width: 150}, p1Body) && gameData.player1.action !== 'block') newP1Health -= 15;
-
-             if (newP1Health <= 0 || newP2Health <= 0 || newTimer <= 0) {
-                 newStatus = 'finished';
-                 if (newP1Health <= 0) winner = 2;
-                 else if (newP2Health <= 0) winner = 1;
-                 else if (newP1Health > newP2Health) winner = 1;
-                 else if (newP2Health > newP1Health) winner = 2;
-                 else winner = 'tie';
+             if (gameData.player1.action === 'punch' && checkCollision(p1AttackBox, p2Body) && gameData.player2.action !== 'block') { newP2Health -= 10; healthChanged = true; }
+             if (gameData.player1.action === 'kick' && checkCollision({...p1AttackBox, width: 150}, p2Body) && gameData.player2.action !== 'block') { newP2Health -= 15; healthChanged = true; }
+             if (gameData.player2.action === 'punch' && checkCollision(p2AttackBox, p1Body) && gameData.player1.action !== 'block') { newP1Health -= 10; healthChanged = true; }
+             if (gameData.player2.action === 'kick' && checkCollision({...p2AttackBox, width: 150}, p1Body) && gameData.player1.action !== 'block') { newP1Health -= 15; healthChanged = true; }
+             
+             if(healthChanged) {
+                updatePayload['player1.health'] = Math.max(0, newP1Health);
+                updatePayload['player2.health'] = Math.max(0, newP2Health);
              }
 
-             updateDoc(getGameDocRef(gameId), {
-                 timer: newTimer, status: newStatus, winner: winner,
-                 'player1.health': Math.max(0, newP1Health),
-                 'player2.health': Math.max(0, newP2Health),
-                 'player1.action': 'idle', 'player2.action': 'idle',
-             });
+             // --- Game Over Logic ---
+             if (newP1Health <= 0 || newP2Health <= 0 || newTimer <= 0) {
+                 updatePayload.status = 'finished';
+                 if (newP1Health <= 0) updatePayload.winner = 2;
+                 else if (newP2Health <= 0) updatePayload.winner = 1;
+                 else if (newP1Health > newP2Health) updatePayload.winner = 1;
+                 else if (newP2Health > newP1Health) updatePayload.winner = 2;
+                 else updatePayload.winner = 'tie';
+             }
+
+             // Reset actions after processing them
+             if(gameData.player1.action !== 'idle' || gameData.player2.action !== 'idle') {
+                updatePayload['player1.action'] = 'idle';
+                updatePayload['player2.action'] = 'idle';
+             }
+
+             // Send all updates in a single batch if there's anything to update
+             if (Object.keys(updatePayload).length > 0) {
+                 updateDoc(getGameDocRef(gameId), updatePayload);
+             }
         }
         
         function checkCollision(box1, box2) {
