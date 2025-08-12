@@ -356,7 +356,7 @@
              if (localPlayerNumber !== 1 || gameEnded || !gameData || gameData.status !== 'active') return;
              
              const now = Date.now();
-             if (now - lastHostUpdateTime < 1000) return;
+             if (now - lastHostUpdateTime < 50) return;
              lastHostUpdateTime = now;
 
              let newTimer = gameData.timer - 1;
