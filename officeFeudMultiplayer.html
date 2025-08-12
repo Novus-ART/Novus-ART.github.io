@@ -83,7 +83,7 @@
 </head>
 <body class="bg-gray-900 text-gray-300 flex flex-col items-center justify-center min-h-screen p-4">
 
-    <h1 class="text-4xl mb-4 text-white">Office Duels</h1>
+    <h1 class="text-4xl mb-4 text-white">Office Duels (v0.1)</h1>
 
     <!-- Lobby UI -->
     <div id="lobby" class="lobby-card">
@@ -209,6 +209,16 @@
                 if (this.position.x + this.width > canvas.width) this.position.x = canvas.width - this.width;
             }
         }
+        
+        // --- Helper Functions ---
+        function generateUUID() {
+            if (window.crypto && window.crypto.randomUUID) {
+                return window.crypto.randomUUID();
+            }
+            // Fallback for older browsers or non-secure contexts
+            return 'id-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);
+        }
+
 
         // --- Firebase Initialization and Auth ---
         async function initializeFirebase() {
@@ -231,12 +241,7 @@
                 await signInAnonymously(auth);
                 
                 // Generate a unique ID for this game session/tab
-                if (window.crypto && window.crypto.randomUUID) {
-                    sessionId = crypto.randomUUID();
-                } else {
-                    // Fallback for older browsers or non-secure contexts
-                    sessionId = 'session-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);
-                }
+                sessionId = generateUUID();
                 document.getElementById('sessionIdDisplay').textContent = sessionId.substring(0, 8);
 
 
@@ -257,7 +262,7 @@
                 showCustomAlert("Not connected. Cannot create game.");
                 return;
             }
-            gameId = `room-${crypto.randomUUID().substring(0, 6)}`;
+            gameId = `room-${generateUUID().substring(0, 6)}`;
             localPlayerNumber = 1;
             const gameRef = getGameDocRef(gameId);
             
