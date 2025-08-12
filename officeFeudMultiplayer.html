@@ -79,25 +79,30 @@
             border-radius: 0.5rem;
             text-align: center;
         }
+        .btn-disabled {
+            background-color: #4a5568;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-gray-300 flex flex-col items-center justify-center min-h-screen p-4">
 
-    <h1 class="text-4xl mb-4 text-white">Office Duels (v0.1)</h1>
+    <h1 class="text-4xl mb-4 text-white">Office Duels (v0.2)</h1>
 
     <!-- Lobby UI -->
     <div id="lobby" class="lobby-card">
         <h2 class="text-2xl mb-4">Join a Match</h2>
-        <p class="mb-2">Your Session ID: <span id="sessionIdDisplay" class="text-yellow-400"></span></p>
+        <p class="mb-2">Status: <span id="statusDisplay" class="text-yellow-400">Connecting...</span></p>
+        <p class="mb-2">Your Session ID: <span id="sessionIdDisplay" class="text-gray-500">...</span></p>
         <div class="mb-6">
-            <button id="createGameBtn" class="w-full px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700">Create New Game</button>
+            <button id="createGameBtn" class="w-full px-6 py-3 bg-green-600 text-white rounded-lg btn-disabled" disabled>Create New Game</button>
         </div>
         <div class="mb-2">
             <p>OR</p>
         </div>
         <div>
             <input type="text" id="joinGameId" placeholder="Enter Room ID" class="input-field mb-2">
-            <button id="joinGameBtn" class="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Join Game</button>
+            <button id="joinGameBtn" class="w-full px-6 py-3 bg-blue-600 text-white rounded-lg btn-disabled" disabled>Join Game</button>
         </div>
         <p id="lobbyError" class="text-red-500 mt-4"></p>
     </div>
@@ -151,6 +156,9 @@
         const gameContainer = document.getElementById('gameContainer');
         const canvas = document.getElementById('gameCanvas');
         const c = canvas.getContext('2d');
+        const createGameBtn = document.getElementById('createGameBtn');
+        const joinGameBtn = document.getElementById('joinGameBtn');
+        const statusDisplay = document.getElementById('statusDisplay');
 
         // --- Firebase & Game State Variables ---
         let db, auth, userId, sessionId, gameId, localPlayerNumber, unsubscribeGame;
@@ -226,6 +234,8 @@
                 // Check if the config has been filled out
                 if (firebaseConfig.apiKey === "YOUR_API_KEY") {
                     showCustomAlert("Firebase config is missing. Please follow the setup instructions.");
+                    statusDisplay.textContent = "Config Missing";
+                    statusDisplay.classList.replace('text-yellow-400', 'text-red-500');
                     return;
                 }
                 const app = initializeApp(firebaseConfig);
@@ -243,11 +253,21 @@
                 // Generate a unique ID for this game session/tab
                 sessionId = generateUUID();
                 document.getElementById('sessionIdDisplay').textContent = sessionId.substring(0, 8);
+                
+                // Enable buttons now that we are connected and have a session ID
+                statusDisplay.textContent = "Connected!";
+                statusDisplay.classList.replace('text-yellow-400', 'text-green-400');
+                createGameBtn.disabled = false;
+                createGameBtn.classList.remove('btn-disabled');
+                joinGameBtn.disabled = false;
+                joinGameBtn.classList.remove('btn-disabled');
 
 
             } catch (error) {
                 console.error("Firebase Init Error:", error);
                 document.getElementById('lobbyError').textContent = 'Could not connect to servers. Check your Firebase config and rules.';
+                statusDisplay.textContent = "Connection Failed";
+                statusDisplay.classList.replace('text-yellow-400', 'text-red-500');
             }
         }
 
@@ -284,7 +304,7 @@
                 startGame(gameId);
             } catch(error) {
                 console.error("Error creating game:", error);
-                showCustomAlert("Failed to create game. Check console for errors.");
+                showCustomAlert(`Failed to create game. Check console for errors. Error: ${error.message}`);
             }
         }
 
