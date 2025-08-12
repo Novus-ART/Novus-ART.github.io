@@ -61,6 +61,24 @@
             border-radius: 0.25rem;
             cursor: pointer;
         }
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+        .modal-content {
+            background-color: #2d3748;
+            padding: 2rem;
+            border-radius: 0.5rem;
+            text-align: center;
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-gray-300 flex flex-col items-center justify-center min-h-screen p-4">
@@ -70,7 +88,7 @@
     <!-- Lobby UI -->
     <div id="lobby" class="lobby-card">
         <h2 class="text-2xl mb-4">Join a Match</h2>
-        <p class="mb-2">Your User ID (for debug): <span id="userIdDisplay" class="text-yellow-400"></span></p>
+        <p class="mb-2">Your User ID: <span id="userIdDisplay" class="text-yellow-400"></span></p>
         <div class="mb-6">
             <button id="createGameBtn" class="w-full px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700">Create New Game</button>
         </div>
@@ -112,12 +130,21 @@
         <canvas id="gameCanvas" width="1024" height="576"></canvas>
         <button id="quitButton" class="absolute bottom-4 left-4 px-4 py-2 bg-red-700 text-white rounded-lg hover:bg-red-800 z-20">Quit Match</button>
     </div>
+    
+    <!-- Custom Alert Modal -->
+    <div id="alertModal" class="modal hidden">
+        <div class="modal-content">
+            <p id="alertMessage" class="mb-4"></p>
+            <button id="alertOkBtn" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">OK</button>
+        </div>
+    </div>
+
 
     <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, deleteDoc, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- DOM Elements ---
         const lobby = document.getElementById('lobby');
@@ -132,8 +159,19 @@
         let gameData = {};
         const keys = { a: { pressed: false }, d: { pressed: false } };
 
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'office-duels';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        // ==================================================================
+        // 1. PASTE YOUR FIREBASE CONFIGURATION OBJECT HERE
+        // ==================================================================
+        const firebaseConfig = {
+            apiKey: "AIzaSyCQ-orkQQwnCZoQnB5d9Y1IhOnnW8rgMWo",
+            authDomain: "office-feud.firebaseapp.com",
+            projectId: "office-feud",
+            storageBucket: "office-feud.firebasestorage.app",
+            messagingSenderId: "1008113378760",
+            appId: "1:1008113378760:web:4934ec5b17f23f6e628cfd",
+            measurementId: "G-RWGF9QSJ8M"
+        };
+        // ==================================================================
 
         // --- Game Setup ---
         const gravity = 0.7;
@@ -175,6 +213,11 @@
         // --- Firebase Initialization and Auth ---
         async function initializeFirebase() {
             try {
+                // Check if the config has been filled out
+                if (firebaseConfig.apiKey === "YOUR_API_KEY") {
+                    showCustomAlert("Firebase config is missing. Please follow the setup instructions.");
+                    return;
+                }
                 const app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
@@ -186,24 +229,25 @@
                     }
                 });
 
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
+                await signInAnonymously(auth);
+
             } catch (error) {
                 console.error("Firebase Init Error:", error);
-                document.getElementById('lobbyError').textContent = 'Could not connect to servers.';
+                document.getElementById('lobbyError').textContent = 'Could not connect to servers. Check your Firebase config and rules.';
             }
         }
 
         // --- Game Logic ---
         function getGameDocRef(id) {
-            return doc(db, `artifacts/${appId}/public/data/games`, id);
+            // The data will be stored in a collection named "games"
+            return doc(db, 'games', id);
         }
 
         async function createGame() {
-            if (!userId) return;
+            if (!userId) {
+                showCustomAlert("Not connected. Cannot create game.");
+                return;
+            }
             gameId = `room-${crypto.randomUUID().substring(0, 6)}`;
             localPlayerNumber = 1;
             const gameRef = getGameDocRef(gameId);
@@ -225,7 +269,10 @@
         }
 
         async function joinGame() {
-            if (!userId) return;
+            if (!userId) {
+                showCustomAlert("Not connected. Cannot join game.");
+                return;
+            }
             const joinId = document.getElementById('joinGameId').value;
             if (!joinId) {
                 document.getElementById('lobbyError').textContent = 'Please enter a Room ID.';
@@ -275,10 +322,7 @@
         }
         
         function updateGameState(data) {
-            // Update timer
             document.getElementById('timer').innerHTML = data.timer;
-
-            // Update player sprites based on Firestore data
             player1.position.x = data.player1.x;
             player1.position.y = data.player1.y;
             player1.velocity.x = data.player1.vx;
@@ -293,7 +337,6 @@
             player2.health = data.player2.health;
             document.getElementById('player2Health').style.width = `${data.player2.health}%`;
             
-            // Handle game status
             const gameMessage = document.getElementById('gameMessage');
             if (data.status === 'waiting') {
                 gameMessage.innerHTML = 'Waiting for Player 2...';
@@ -310,17 +353,16 @@
         
         let lastHostUpdateTime = 0;
         function hostUpdateLoop() {
-             if (localPlayerNumber !== 1 || gameEnded || gameData.status !== 'active') return;
+             if (localPlayerNumber !== 1 || gameEnded || !gameData || gameData.status !== 'active') return;
              
              const now = Date.now();
-             if (now - lastHostUpdateTime < 1000) return; // Update timer once per second
+             if (now - lastHostUpdateTime < 1000) return;
              lastHostUpdateTime = now;
 
              let newTimer = gameData.timer - 1;
              let newStatus = gameData.status;
              let winner = null;
 
-             // Collision/Damage logic (Host authoritative)
              const p1AttackBox = { x: gameData.player1.x, y: gameData.player1.y + 50, width: 100, height: 50 };
              const p2AttackBox = { x: gameData.player2.x, y: gameData.player2.y + 50, width: 100, height: 50 };
              const p1Body = { x: gameData.player1.x, y: gameData.player1.y, width: 50, height: 150 };
@@ -329,23 +371,11 @@
              let newP1Health = gameData.player1.health;
              let newP2Health = gameData.player2.health;
 
-             // P1 attacks P2
-             if (gameData.player1.action === 'punch' && checkCollision(p1AttackBox, p2Body) && gameData.player2.action !== 'block') {
-                 newP2Health -= 10;
-             }
-             if (gameData.player1.action === 'kick' && checkCollision({...p1AttackBox, width: 150}, p2Body) && gameData.player2.action !== 'block') {
-                 newP2Health -= 15;
-             }
+             if (gameData.player1.action === 'punch' && checkCollision(p1AttackBox, p2Body) && gameData.player2.action !== 'block') newP2Health -= 10;
+             if (gameData.player1.action === 'kick' && checkCollision({...p1AttackBox, width: 150}, p2Body) && gameData.player2.action !== 'block') newP2Health -= 15;
+             if (gameData.player2.action === 'punch' && checkCollision(p2AttackBox, p1Body) && gameData.player1.action !== 'block') newP1Health -= 10;
+             if (gameData.player2.action === 'kick' && checkCollision({...p2AttackBox, width: 150}, p1Body) && gameData.player1.action !== 'block') newP1Health -= 15;
 
-             // P2 attacks P1
-             if (gameData.player2.action === 'punch' && checkCollision(p2AttackBox, p1Body) && gameData.player1.action !== 'block') {
-                 newP1Health -= 10;
-             }
-             if (gameData.player2.action === 'kick' && checkCollision({...p2AttackBox, width: 150}, p1Body) && gameData.player1.action !== 'block') {
-                 newP1Health -= 15;
-             }
-
-             // Check for winner
              if (newP1Health <= 0 || newP2Health <= 0 || newTimer <= 0) {
                  newStatus = 'finished';
                  if (newP1Health <= 0) winner = 2;
@@ -356,23 +386,15 @@
              }
 
              updateDoc(getGameDocRef(gameId), {
-                 timer: newTimer,
-                 status: newStatus,
-                 winner: winner,
+                 timer: newTimer, status: newStatus, winner: winner,
                  'player1.health': Math.max(0, newP1Health),
                  'player2.health': Math.max(0, newP2Health),
-                 'player1.action': 'idle', // Reset actions after processing
-                 'player2.action': 'idle',
+                 'player1.action': 'idle', 'player2.action': 'idle',
              });
         }
         
         function checkCollision(box1, box2) {
-            return (
-                box1.x < box2.x + box2.width &&
-                box1.x + box1.width > box2.x &&
-                box1.y < box2.y + box2.height &&
-                box1.y + box1.height > box2.y
-            );
+            return (box1.x < box2.x + box2.width && box1.x + box1.width > box2.x && box1.y < box2.y + box2.height && box1.y + box1.height > box2.y);
         }
 
         async function sendPlayerUpdate(updates) {
@@ -423,7 +445,15 @@
             }
         }
         
-        // --- Event Listeners ---
+        function showCustomAlert(message) {
+            document.getElementById('alertMessage').textContent = message;
+            document.getElementById('alertModal').classList.remove('hidden');
+        }
+
+        document.getElementById('alertOkBtn').addEventListener('click', () => {
+            document.getElementById('alertModal').classList.add('hidden');
+        });
+
         document.getElementById('createGameBtn').addEventListener('click', createGame);
         document.getElementById('joinGameBtn').addEventListener('click', joinGame);
         document.getElementById('quitButton').addEventListener('click', handleQuit);
@@ -434,7 +464,7 @@
             tempInput.select();
             document.execCommand('copy');
             document.body.removeChild(tempInput);
-            alert('Room ID copied to clipboard!');
+            showCustomAlert('Room ID copied to clipboard!');
         });
 
         window.addEventListener('keydown', (event) => {
