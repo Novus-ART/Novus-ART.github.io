@@ -231,7 +231,12 @@
                 await signInAnonymously(auth);
                 
                 // Generate a unique ID for this game session/tab
-                sessionId = crypto.randomUUID();
+                if (window.crypto && window.crypto.randomUUID) {
+                    sessionId = crypto.randomUUID();
+                } else {
+                    // Fallback for older browsers or non-secure contexts
+                    sessionId = 'session-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);
+                }
                 document.getElementById('sessionIdDisplay').textContent = sessionId.substring(0, 8);
 
 
@@ -268,9 +273,14 @@
                     x: canvas.width - 150, y: 100, vx: 0, vy: 0, health: 100, action: 'idle'
                 }
             };
-
-            await setDoc(gameRef, initialGameState);
-            startGame(gameId);
+            
+            try {
+                await setDoc(gameRef, initialGameState);
+                startGame(gameId);
+            } catch(error) {
+                console.error("Error creating game:", error);
+                showCustomAlert("Failed to create game. Check console for errors.");
+            }
         }
 
         async function joinGame() {
@@ -289,14 +299,17 @@
 
             if (gameSnap.exists()) {
                 const data = gameSnap.data();
-                if (Object.keys(data.players).length < 2) {
+                if (Object.keys(data.players).length < 2 && !data.players[sessionId]) {
                     localPlayerNumber = 2;
                     await updateDoc(gameRef, {
                         [`players.${sessionId}`]: 2, // Use sessionId to identify player
                         status: 'active'
                     });
                     startGame(joinId);
-                } else {
+                } else if (data.players[sessionId]) {
+                    document.getElementById('lobbyError').textContent = 'You are already in this game.';
+                }
+                else {
                     document.getElementById('lobbyError').textContent = 'This room is full.';
                 }
             } else {
@@ -442,8 +455,21 @@
             lobby.classList.remove('hidden');
         }
 
+        let lastNetworkUpdate = 0;
+        const networkUpdateRate = 50; // 20Hz
+
         function animate() {
             window.requestAnimationFrame(animate);
+            
+            // Handle local input every frame for responsiveness
+            if (localPlayerNumber && !gameEnded) {
+                const myPlayer = localPlayerNumber === 1 ? player1 : player2;
+                myPlayer.velocity.x = 0;
+                if (keys.a.pressed) myPlayer.velocity.x = -5;
+                else if (keys.d.pressed) myPlayer.velocity.x = 5;
+            }
+
+            // Render graphics every frame
             c.fillStyle = '#2d3748';
             c.fillRect(0, 0, canvas.width, canvas.height);
             c.fillStyle = '#4a5568';
@@ -454,15 +480,17 @@
                 player2.update();
             }
             
-            if (localPlayerNumber && !gameEnded) {
-                const myPlayer = localPlayerNumber === 1 ? player1 : player2;
-                myPlayer.velocity.x = 0;
-                if (keys.a.pressed) myPlayer.velocity.x = -5;
-                else if (keys.d.pressed) myPlayer.velocity.x = 5;
-
-                sendPlayerUpdate({ x: myPlayer.position.x, y: myPlayer.position.y, vx: myPlayer.velocity.x, vy: myPlayer.velocity.y });
+            // Send network updates at a throttled rate
+            const now = Date.now();
+            if (now - lastNetworkUpdate > networkUpdateRate) {
+                lastNetworkUpdate = now;
+                if (localPlayerNumber && !gameEnded) {
+                    const myPlayer = localPlayerNumber === 1 ? player1 : player2;
+                    sendPlayerUpdate({ x: myPlayer.position.x, y: myPlayer.position.y, vx: myPlayer.velocity.x, vy: myPlayer.velocity.y });
+                }
             }
 
+            // Host runs main game logic
             if (localPlayerNumber === 1) {
                 hostUpdateLoop();
             }
