@@ -399,7 +399,8 @@
              if (localPlayerNumber !== 1 || gameEnded || !gameData || !gameData.player1 || gameData.status !== 'active') return;
              
              const now = Date.now();
-             if (now - lastHostUpdateTime < 50) return; // Run at ~20Hz
+             // --- QUOTA FIX: Reduce host update frequency to 10Hz ---
+             if (now - lastHostUpdateTime < 100) return; 
              lastHostUpdateTime = now;
 
              const updatePayload = {};
@@ -481,7 +482,8 @@
         }
 
         let lastNetworkUpdate = 0;
-        const networkUpdateRate = 50; // 20Hz
+        // --- QUOTA FIX: Reduce client update frequency to 5Hz ---
+        const networkUpdateRate = 200; 
 
         function animate() {
             window.requestAnimationFrame(animate);
