@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Office Duels - Online</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Press Start 2P', cursive;
+            background-color: #1a202c;
+            color: #a0aec0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            min-height: 100vh;
+            margin: 0;
+            padding: 1rem;
+        }
+        canvas {
+            background: #2d3748;
+            border-radius: 0.5rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            width: 100%;
+            max-width: 1024px;
+        }
+        .key {
+            display: inline-block;
+            padding: 0.5rem 0.75rem;
+            margin: 0.25rem;
+            background-color: #4a5568;
+            color: #e2e8f0;
+            border-radius: 0.25rem;
+            border: 1px solid #718096;
+            min-width: 40px;
+        }
+        .lobby-card {
+            background-color: #2d3748;
+            padding: 2rem;
+            border-radius: 0.5rem;
+            text-align: center;
+            width: 100%;
+            max-width: 500px;
+        }
+        .input-field {
+            background-color: #4a5568;
+            border: 1px solid #718096;
+            color: white;
+            padding: 0.5rem;
+            border-radius: 0.25rem;
+            margin-top: 0.5rem;
+            text-align: center;
+            width: 100%;
+        }
+        .copy-btn {
+            background-color: #4299e1;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 0.25rem;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-300 flex flex-col items-center justify-center min-h-screen p-4">
+
+    <h1 class="text-4xl mb-4 text-white">Office Duels</h1>
+
+    <!-- Lobby UI -->
+    <div id="lobby" class="lobby-card">
+        <h2 class="text-2xl mb-4">Join a Match</h2>
+        <p class="mb-2">Your User ID (for debug): <span id="userIdDisplay" class="text-yellow-400"></span></p>
+        <div class="mb-6">
+            <button id="createGameBtn" class="w-full px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700">Create New Game</button>
+        </div>
+        <div class="mb-2">
+            <p>OR</p>
+        </div>
+        <div>
+            <input type="text" id="joinGameId" placeholder="Enter Room ID" class="input-field mb-2">
+            <button id="joinGameBtn" class="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Join Game</button>
+        </div>
+        <p id="lobbyError" class="text-red-500 mt-4"></p>
+    </div>
+
+    <!-- Game UI Container -->
+    <div id="gameContainer" class="relative w-full max-w-5xl hidden">
+        <div class="text-center mb-2 text-lg">Room ID: <span id="roomIdDisplay" class="text-yellow-400"></span> <button id="copyRoomIdBtn" class="copy-btn text-sm ml-2">Copy</button></div>
+        <!-- Player 1 Health -->
+        <div class="absolute top-12 left-4 w-2/5 h-8 bg-gray-700 rounded-lg border-2 border-gray-500">
+            <div id="player1Health" class="bg-red-500 h-full rounded-md transition-all duration-500 ease-in-out"></div>
+            <span class="absolute inset-0 flex items-center justify-center text-white font-bold">Player 1</span>
+        </div>
+
+        <!-- Timer -->
+        <div id="timer" class="absolute top-12 left-1/2 -translate-x-1/2 w-24 h-12 bg-gray-800 text-white text-4xl flex items-center justify-center rounded-lg border-2 border-gray-500">
+            --
+        </div>
+        
+        <!-- Player 2 Health -->
+        <div class="absolute top-12 right-4 w-2/5 h-8 bg-gray-700 rounded-lg border-2 border-gray-500">
+            <div id="player2Health" class="bg-blue-500 h-full rounded-md transition-all duration-500 ease-in-out"></div>
+            <span class="absolute inset-0 flex items-center justify-center text-white font-bold">Player 2</span>
+        </div>
+
+        <!-- Game Message -->
+        <div id="gameMessage" class="absolute inset-0 flex items-center justify-center text-5xl text-white font-bold hidden bg-black bg-opacity-70 z-10">
+            Waiting for Player 2...
+        </div>
+
+        <canvas id="gameCanvas" width="1024" height="576"></canvas>
+        <button id="quitButton" class="absolute bottom-4 left-4 px-4 py-2 bg-red-700 text-white rounded-lg hover:bg-red-800 z-20">Quit Match</button>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- DOM Elements ---
+        const lobby = document.getElementById('lobby');
+        const gameContainer = document.getElementById('gameContainer');
+        const canvas = document.getElementById('gameCanvas');
+        const c = canvas.getContext('2d');
+
+        // --- Firebase & Game State Variables ---
+        let db, auth, userId, gameId, localPlayerNumber, unsubscribeGame;
+        let player1, player2;
+        let gameEnded = false;
+        let gameData = {};
+        const keys = { a: { pressed: false }, d: { pressed: false } };
+
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'office-duels';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+
+        // --- Game Setup ---
+        const gravity = 0.7;
+        const groundHeight = 96;
+
+        class Sprite {
+            constructor({ position, velocity, color = 'red', dimensions }) {
+                this.position = position;
+                this.velocity = velocity;
+                this.width = dimensions.width;
+                this.height = dimensions.height;
+                this.color = color;
+                this.health = 100;
+                this.isAttacking = false;
+                this.isBlocking = false;
+            }
+
+            draw() {
+                c.fillStyle = this.color;
+                c.fillRect(this.position.x, this.position.y, this.width, this.height);
+            }
+
+            update() {
+                this.draw();
+                this.position.x += this.velocity.x;
+                this.position.y += this.velocity.y;
+
+                if (this.position.y + this.height + this.velocity.y >= canvas.height - groundHeight) {
+                    this.velocity.y = 0;
+                    this.position.y = canvas.height - this.height - groundHeight;
+                } else {
+                    this.velocity.y += gravity;
+                }
+                 if (this.position.x < 0) this.position.x = 0;
+                if (this.position.x + this.width > canvas.width) this.position.x = canvas.width - this.width;
+            }
+        }
+
+        // --- Firebase Initialization and Auth ---
+        async function initializeFirebase() {
+            try {
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                onAuthStateChanged(auth, user => {
+                    if (user) {
+                        userId = user.uid;
+                        document.getElementById('userIdDisplay').textContent = userId.substring(0, 8);
+                    }
+                });
+
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (error) {
+                console.error("Firebase Init Error:", error);
+                document.getElementById('lobbyError').textContent = 'Could not connect to servers.';
+            }
+        }
+
+        // --- Game Logic ---
+        function getGameDocRef(id) {
+            return doc(db, `artifacts/${appId}/public/data/games`, id);
+        }
+
+        async function createGame() {
+            if (!userId) return;
+            gameId = `room-${crypto.randomUUID().substring(0, 6)}`;
+            localPlayerNumber = 1;
+            const gameRef = getGameDocRef(gameId);
+            
+            const initialGameState = {
+                players: { [userId]: 1 },
+                status: 'waiting',
+                timer: 60,
+                player1: {
+                    x: 100, y: 0, vx: 0, vy: 0, health: 100, action: 'idle'
+                },
+                player2: {
+                    x: canvas.width - 150, y: 100, vx: 0, vy: 0, health: 100, action: 'idle'
+                }
+            };
+
+            await setDoc(gameRef, initialGameState);
+            startGame(gameId);
+        }
+
+        async function joinGame() {
+            if (!userId) return;
+            const joinId = document.getElementById('joinGameId').value;
+            if (!joinId) {
+                document.getElementById('lobbyError').textContent = 'Please enter a Room ID.';
+                return;
+            }
+
+            const gameRef = getGameDocRef(joinId);
+            const gameSnap = await getDoc(gameRef);
+
+            if (gameSnap.exists()) {
+                const data = gameSnap.data();
+                if (Object.keys(data.players).length < 2) {
+                    localPlayerNumber = 2;
+                    await updateDoc(gameRef, {
+                        [`players.${userId}`]: 2,
+                        status: 'active'
+                    });
+                    startGame(joinId);
+                } else {
+                    document.getElementById('lobbyError').textContent = 'This room is full.';
+                }
+            } else {
+                document.getElementById('lobbyError').textContent = 'Room not found.';
+            }
+        }
+
+        function startGame(id) {
+            gameId = id;
+            lobby.classList.add('hidden');
+            gameContainer.classList.remove('hidden');
+            document.getElementById('roomIdDisplay').textContent = gameId;
+            document.getElementById('gameMessage').classList.remove('hidden');
+
+            player1 = new Sprite({ position: { x: 100, y: 0 }, velocity: { x: 0, y: 0 }, color: '#ef4444', dimensions: { width: 50, height: 150 } });
+            player2 = new Sprite({ position: { x: canvas.width - 150, y: 100 }, velocity: { x: 0, y: 0 }, color: '#3b82f6', dimensions: { width: 50, height: 150 } });
+
+            unsubscribeGame = onSnapshot(getGameDocRef(gameId), (doc) => {
+                if (!doc.exists()) {
+                    handleQuit();
+                    return;
+                }
+                gameData = doc.data();
+                updateGameState(gameData);
+            });
+            
+            animate();
+        }
+        
+        function updateGameState(data) {
+            // Update timer
+            document.getElementById('timer').innerHTML = data.timer;
+
+            // Update player sprites based on Firestore data
+            player1.position.x = data.player1.x;
+            player1.position.y = data.player1.y;
+            player1.velocity.x = data.player1.vx;
+            player1.velocity.y = data.player1.vy;
+            player1.health = data.player1.health;
+            document.getElementById('player1Health').style.width = `${data.player1.health}%`;
+
+            player2.position.x = data.player2.x;
+            player2.position.y = data.player2.y;
+            player2.velocity.x = data.player2.vx;
+            player2.velocity.y = data.player2.vy;
+            player2.health = data.player2.health;
+            document.getElementById('player2Health').style.width = `${data.player2.health}%`;
+            
+            // Handle game status
+            const gameMessage = document.getElementById('gameMessage');
+            if (data.status === 'waiting') {
+                gameMessage.innerHTML = 'Waiting for Player 2...';
+                gameMessage.classList.remove('hidden');
+            } else if (data.status === 'active') {
+                gameMessage.classList.add('hidden');
+            } else if (data.status === 'finished') {
+                gameEnded = true;
+                if (data.winner === 'tie') gameMessage.innerHTML = 'Tie!';
+                else gameMessage.innerHTML = `Player ${data.winner} Wins!`;
+                gameMessage.classList.remove('hidden');
+            }
+        }
+        
+        let lastHostUpdateTime = 0;
+        function hostUpdateLoop() {
+             if (localPlayerNumber !== 1 || gameEnded || gameData.status !== 'active') return;
+             
+             const now = Date.now();
+             if (now - lastHostUpdateTime < 1000) return; // Update timer once per second
+             lastHostUpdateTime = now;
+
+             let newTimer = gameData.timer - 1;
+             let newStatus = gameData.status;
+             let winner = null;
+
+             // Collision/Damage logic (Host authoritative)
+             const p1AttackBox = { x: gameData.player1.x, y: gameData.player1.y + 50, width: 100, height: 50 };
+             const p2AttackBox = { x: gameData.player2.x, y: gameData.player2.y + 50, width: 100, height: 50 };
+             const p1Body = { x: gameData.player1.x, y: gameData.player1.y, width: 50, height: 150 };
+             const p2Body = { x: gameData.player2.x, y: gameData.player2.y, width: 50, height: 150 };
+             
+             let newP1Health = gameData.player1.health;
+             let newP2Health = gameData.player2.health;
+
+             // P1 attacks P2
+             if (gameData.player1.action === 'punch' && checkCollision(p1AttackBox, p2Body) && gameData.player2.action !== 'block') {
+                 newP2Health -= 10;
+             }
+             if (gameData.player1.action === 'kick' && checkCollision({...p1AttackBox, width: 150}, p2Body) && gameData.player2.action !== 'block') {
+                 newP2Health -= 15;
+             }
+
+             // P2 attacks P1
+             if (gameData.player2.action === 'punch' && checkCollision(p2AttackBox, p1Body) && gameData.player1.action !== 'block') {
+                 newP1Health -= 10;
+             }
+             if (gameData.player2.action === 'kick' && checkCollision({...p2AttackBox, width: 150}, p1Body) && gameData.player1.action !== 'block') {
+                 newP1Health -= 15;
+             }
+
+             // Check for winner
+             if (newP1Health <= 0 || newP2Health <= 0 || newTimer <= 0) {
+                 newStatus = 'finished';
+                 if (newP1Health <= 0) winner = 2;
+                 else if (newP2Health <= 0) winner = 1;
+                 else if (newP1Health > newP2Health) winner = 1;
+                 else if (newP2Health > newP1Health) winner = 2;
+                 else winner = 'tie';
+             }
+
+             updateDoc(getGameDocRef(gameId), {
+                 timer: newTimer,
+                 status: newStatus,
+                 winner: winner,
+                 'player1.health': Math.max(0, newP1Health),
+                 'player2.health': Math.max(0, newP2Health),
+                 'player1.action': 'idle', // Reset actions after processing
+                 'player2.action': 'idle',
+             });
+        }
+        
+        function checkCollision(box1, box2) {
+            return (
+                box1.x < box2.x + box2.width &&
+                box1.x + box1.width > box2.x &&
+                box1.y < box2.y + box2.height &&
+                box1.y + box1.height > box2.y
+            );
+        }
+
+        async function sendPlayerUpdate(updates) {
+            if (gameEnded || !gameId) return;
+            const fieldName = localPlayerNumber === 1 ? 'player1' : 'player2';
+            const updatePayload = {};
+            for (const key in updates) {
+                updatePayload[`${fieldName}.${key}`] = updates[key];
+            }
+            await updateDoc(getGameDocRef(gameId), updatePayload);
+        }
+        
+        async function handleQuit() {
+            if (unsubscribeGame) unsubscribeGame();
+            if (localPlayerNumber === 1 && gameId) {
+                await deleteDoc(getGameDocRef(gameId));
+            }
+            gameId = null;
+            gameEnded = false;
+            localPlayerNumber = null;
+            gameContainer.classList.add('hidden');
+            lobby.classList.remove('hidden');
+        }
+
+        function animate() {
+            window.requestAnimationFrame(animate);
+            c.fillStyle = '#2d3748';
+            c.fillRect(0, 0, canvas.width, canvas.height);
+            c.fillStyle = '#4a5568';
+            c.fillRect(0, canvas.height - groundHeight, canvas.width, groundHeight);
+
+            if (player1 && player2) {
+                player1.update();
+                player2.update();
+            }
+            
+            if (localPlayerNumber && !gameEnded) {
+                const myPlayer = localPlayerNumber === 1 ? player1 : player2;
+                myPlayer.velocity.x = 0;
+                if (keys.a.pressed) myPlayer.velocity.x = -5;
+                else if (keys.d.pressed) myPlayer.velocity.x = 5;
+
+                sendPlayerUpdate({ x: myPlayer.position.x, y: myPlayer.position.y, vx: myPlayer.velocity.x, vy: myPlayer.velocity.y });
+            }
+
+            if (localPlayerNumber === 1) {
+                hostUpdateLoop();
+            }
+        }
+        
+        // --- Event Listeners ---
+        document.getElementById('createGameBtn').addEventListener('click', createGame);
+        document.getElementById('joinGameBtn').addEventListener('click', joinGame);
+        document.getElementById('quitButton').addEventListener('click', handleQuit);
+        document.getElementById('copyRoomIdBtn').addEventListener('click', () => {
+            const tempInput = document.createElement('input');
+            document.body.appendChild(tempInput);
+            tempInput.value = gameId;
+            tempInput.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempInput);
+            alert('Room ID copied to clipboard!');
+        });
+
+        window.addEventListener('keydown', (event) => {
+            if (!localPlayerNumber || gameEnded) return;
+            const myPlayer = localPlayerNumber === 1 ? player1 : player2;
+            switch (event.key) {
+                case 'd': case 'ArrowRight': keys.d.pressed = true; break;
+                case 'a': case 'ArrowLeft': keys.a.pressed = true; break;
+                case 'w': case 'ArrowUp': if (myPlayer.position.y + myPlayer.height >= canvas.height - groundHeight) myPlayer.velocity.y = -20; break;
+                case 'z': case 'j': sendPlayerUpdate({ action: 'punch' }); break;
+                case 'x': case 'k': sendPlayerUpdate({ action: 'kick' }); break;
+                case 'c': case 'l': sendPlayerUpdate({ action: 'block' }); break;
+            }
+        });
+
+        window.addEventListener('keyup', (event) => {
+            if (!localPlayerNumber || gameEnded) return;
+            switch (event.key) {
+                case 'd': case 'ArrowRight': keys.d.pressed = false; break;
+                case 'a': case 'ArrowLeft': keys.a.pressed = false; break;
+            }
+        });
+
+        // --- Start Application ---
+        initializeFirebase();
+    </script>
+</body>
+</html>
